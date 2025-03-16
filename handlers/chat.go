@@ -113,16 +113,32 @@ type ChatResponse struct {
 
 // ConsoleChatWithAgent handles chat interactions from the console
 func ConsoleChatWithAgent(agentID int, message string, chatHistory *services.ChatHistory) (string, error) {
-	// Get the conversation history for context
-	history := chatHistory.GetHistory(agentID)
+	// Create channels for our goroutine results
+	historyChan := make(chan []services.Message, 1)
+	similarMessagesChan := make(chan []services.Message, 1)
 
-	// Find semantically similar messages (optional)
-	similarMessages, err := chatHistory.SearchSimilarMessages(agentID, message, 3)
-	if err != nil {
-		log.Printf("Warning: Could not search for similar messages: %v", err)
-		// Continue without similar messages
-	}
+	// Start goroutine to get chat history
+	go func() {
+		history := chatHistory.GetHistory(agentID)
+		historyChan <- history
+	}()
 
+	// Start goroutine to search for similar messages
+	go func() {
+		similar, err := chatHistory.SearchSimilarMessages(agentID, message, 3)
+		if err != nil {
+			log.Printf("Warning: Could not search for similar messages: %v", err)
+			similarMessagesChan <- []services.Message{} // Empty slice instead of nil
+			return
+		}
+		similarMessagesChan <- similar
+	}()
+
+	// Get the history and similar messages from channels
+	history := <-historyChan
+	similarMessages := <-similarMessagesChan
+
+	// The rest of your existing code remains unchanged
 	agent, err := services.GetAgentByID(agentID)
 	if err != nil {
 		return "", fmt.Errorf("error retrieving agent %d: %v", agentID, err)
