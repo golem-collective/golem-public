@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // OpenAIAPIURL is the endpoint for the OpenAI API
@@ -27,93 +29,98 @@ type OpenAIResponse struct {
 	} `json:"choices"`
 }
 
+// Add this at the package level
+var (
+	httpClient = &http.Client{
+		Timeout: time.Second * 30,
+		Transport: &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 100,
+			IdleConnTimeout:     90 * time.Second,
+		},
+	}
+)
+
 // SendMessageToOpenAI sends a message to the OpenAI API and returns the response
-func SendMessageToOpenAI(apiKey string, userMessage string, systemTemplate string, state map[string]string) (string, error) {
-	// Replace template variables with values from state
-	systemMessage := systemTemplate
+func SendMessageToOpenAI(apiKey, message, template string, state map[string]string) (string, error) {
+	// Start timing
+	startTime := time.Now()
+	log.Printf("Starting OpenAI API request...")
+
+	// Process the template with the state
+	context := template
 	for key, value := range state {
-		systemMessage = strings.Replace(systemMessage, "{{"+key+"}}", value, -1)
+		context = strings.Replace(context, "{{"+key+"}}", value, -1)
 	}
 
-	var context = BuildContext(systemTemplate, state)
+	// Combine the context and message
+	prompt := context + message
 
-	// Create the request body
+	// Create the request payload
 	requestBody := map[string]interface{}{
 		"model": "gpt-3.5-turbo",
 		"messages": []map[string]string{
 			{
-				"role":    "user",
-				"content": userMessage,
-			},
-			{
 				"role":    "system",
-				"content": context,
+				"content": prompt,
 			},
 		},
+		"temperature": 0.7,
 	}
 
-	requestData, err := json.Marshal(requestBody)
+	// Convert the request payload to JSON
+	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
-		return "", fmt.Errorf("error marshaling request: %v", err)
+		return "", fmt.Errorf("error marshaling request: %w", err)
 	}
 
 	// Create the HTTP request
-	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(requestData))
+	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(jsonData))
 	if err != nil {
-		return "", fmt.Errorf("error creating request: %v", err)
+		return "", fmt.Errorf("error creating request: %w", err)
 	}
 
-	// Set headers
+	// Set the headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	// Send the request
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("error sending request: %v", err)
+		return "", fmt.Errorf("error sending request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Read the response
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("error reading response: %v", err)
-	}
-
-	// Check for API errors
+	// Check the response status code
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API error: %s", string(body))
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	// Parse the response
-	var response map[string]interface{}
-	if err := json.Unmarshal(body, &response); err != nil {
-		return "", fmt.Errorf("error parsing response: %v", err)
+	var response struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
 	}
 
-	// Extract the message content
-	choices, ok := response["choices"].([]interface{})
-	if !ok || len(choices) == 0 {
-		return "", fmt.Errorf("invalid response format")
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return "", fmt.Errorf("error decoding response: %w", err)
 	}
 
-	choice, ok := choices[0].(map[string]interface{})
-	if !ok {
-		return "", fmt.Errorf("invalid choice format")
+	// Check if there are any choices
+	if len(response.Choices) == 0 {
+		return "", fmt.Errorf("no response choices returned")
 	}
 
-	message, ok := choice["message"].(map[string]interface{})
-	if !ok {
-		return "", fmt.Errorf("invalid message format")
-	}
+	// Calculate and log the elapsed time
+	elapsedTime := time.Since(startTime)
+	log.Printf("OpenAI API request completed in %v", elapsedTime)
 
-	content, ok := message["content"].(string)
-	if !ok {
-		return "", fmt.Errorf("invalid content format")
-	}
-
-	return content, nil
+	// Return the content of the first choice
+	return response.Choices[0].Message.Content, nil
 }
 
 // AddMessage is a helper function to add a message to the history
