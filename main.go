@@ -80,18 +80,12 @@ func main() {
 			continue
 		}
 
-		// Add user message to history
-		chatHistory.AddMessage(agentID, "user", userInput)
-
-		// Chat with the agent
+		// Chat with the agent - the handler will manage the chat history
 		response, err := handlers.ConsoleChatWithAgent(agentID, userInput, chatHistory)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			continue
 		}
-
-		// Add agent response to history
-		chatHistory.AddMessage(agentID, "assistant", response)
 
 		fmt.Printf("Agent: %s\n", response)
 	}

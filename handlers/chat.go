@@ -155,10 +155,8 @@ func ConsoleChatWithAgent(agentID int, message string, chatHistory *services.Cha
 		Recent chat history:
 		{{history}}
 		
-		{{if .similar_messages}}
 		Relevant past conversations:
-		{{similar_messages}}
-		{{end}}
+		{{similarMessages}}
 		
 		Adjectives:
 		{{adjectives}}
@@ -170,16 +168,17 @@ func ConsoleChatWithAgent(agentID int, message string, chatHistory *services.Cha
 
 	// Create state map for context variables
 	state := map[string]string{
-		"name":         personality.Name,
-		"description":  personality.Description,
-		"specialty":    personality.System,
-		"history":      formatChatHistory(history),
-		"style":        strings.Join(personality.Style.Chat, "\n"),
-		"bio":          strings.Join(personality.Bio, "\n"),
-		"lore":         strings.Join(personality.Lore, "\n"),
-		"knowledge":    strings.Join(personality.Knowledge, "\n"),
-		"adjectives":   strings.Join(personality.Adjectives, "\n"),
-		"instructions": personality.Instructions,
+		"name":            personality.Name,
+		"description":     personality.Description,
+		"specialty":       personality.System,
+		"history":         formatChatHistory(history),
+		"style":           strings.Join(personality.Style.Chat, "\n"),
+		"bio":             strings.Join(personality.Bio, "\n"),
+		"lore":            strings.Join(personality.Lore, "\n"),
+		"knowledge":       strings.Join(personality.Knowledge, "\n"),
+		"adjectives":      strings.Join(personality.Adjectives, "\n"),
+		"instructions":    personality.Instructions,
+		"similarMessages": formatChatHistory(similarMessages),
 	}
 
 	// Add similar messages if available

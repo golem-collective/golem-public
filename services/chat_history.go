@@ -146,7 +146,7 @@ func (ch *ChatHistory) SearchSimilarMessages(agentID int, query string, limit in
 
 	// Search for similar messages using cosine similarity
 	sqlQuery := `
-		SELECT id, role, content, embedding <=> $1 AS similarity
+		SELECT id, role, content, embedding, embedding <=> $1 AS similarity
 		FROM chat_history
 		WHERE agent_id = $2 AND embedding IS NOT NULL
 		ORDER BY similarity ASC
@@ -165,14 +165,19 @@ func (ch *ChatHistory) SearchSimilarMessages(agentID int, query string, limit in
 		var similarity float32
 		var embeddingJSON []byte
 
-		if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &similarity); err != nil {
+		if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &embeddingJSON, &similarity); err != nil {
 			log.Printf("Error scanning search result: %v", err)
 			continue
 		}
 
-		// Unmarshal the embedding
-		if err := json.Unmarshal(embeddingJSON, &msg.Embedding); err != nil {
-			log.Printf("Warning: Could not unmarshal embedding: %v", err)
+		// Print the message ID to the console
+		log.Printf("Found similar message with ID: %d, similarity: %f", msg.ID, similarity)
+
+		// Only try to unmarshal if we have embedding data
+		if len(embeddingJSON) > 0 {
+			if err := json.Unmarshal(embeddingJSON, &msg.Embedding); err != nil {
+				log.Printf("Warning: Could not unmarshal embedding: %v", err)
+			}
 		}
 
 		messages = append(messages, msg)

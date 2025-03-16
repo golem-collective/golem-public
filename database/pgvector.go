@@ -79,7 +79,7 @@ func CreateChatHistoryTable() error {
 		agent_id INTEGER NOT NULL,
 		role VARCHAR(50) NOT NULL,
 		content TEXT NOT NULL,
-		embedding(1536),
+		embedding vector(1536),
 		created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (agent_id) REFERENCES agents(id)
 	);`
