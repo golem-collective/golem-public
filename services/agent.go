@@ -4,6 +4,7 @@ package services
 import (
 	"ai-agent-app/database"
 	"ai-agent-app/models"
+	"fmt"
 	"log"
 )
 
@@ -55,4 +56,31 @@ func GetAgentByName(name string) (*models.Agent, error) {
 	}
 
 	return &agent, nil
+}
+
+// GetAllAgents returns all agents from the database
+func GetAllAgents() ([]models.Agent, error) {
+	query := `SELECT id, name FROM agents ORDER BY id`
+
+	db := database.GetDB()
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("error querying agents: %w", err)
+	}
+	defer rows.Close()
+
+	var agents []models.Agent
+	for rows.Next() {
+		var agent models.Agent
+		if err := rows.Scan(&agent.ID, &agent.Name); err != nil {
+			return nil, fmt.Errorf("error scanning agent row: %w", err)
+		}
+		agents = append(agents, agent)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating agent rows: %w", err)
+	}
+
+	return agents, nil
 }

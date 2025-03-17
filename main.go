@@ -5,13 +5,21 @@ import (
 	"ai-agent-app/handlers"
 	"ai-agent-app/services"
 	"bufio"
+	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 )
+
+var scanner = bufio.NewScanner(os.Stdin)
 
 func init() {
 	// Load .env file
@@ -22,8 +30,8 @@ func init() {
 }
 
 func main() {
-	fmt.Println("AI Agent Console")
-	fmt.Println("----------------")
+	fmt.Println("AI Agent Application")
+	fmt.Println("-------------------")
 
 	// Initialize database connection
 	database.InitDB()
@@ -45,6 +53,61 @@ func main() {
 		log.Println("OPENAI_API_KEY is set")
 	}
 
+	// Start HTTP server in a goroutine
+	go startHTTPServer()
+
+	// Start console interface
+	startConsoleInterface()
+}
+
+func startHTTPServer() {
+	r := mux.NewRouter()
+
+	// API routes
+	api := r.PathPrefix("/api").Subrouter()
+	api.HandleFunc("/agents", handlers.GetAgents).Methods("GET")
+	api.HandleFunc("/agents/{agentID}/chat", handlers.ChatWithAgent).Methods("POST")
+	api.HandleFunc("/agents/{agentID}/history", handlers.ClearAgentHistory).Methods("DELETE")
+
+	// Get port from environment or use default
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	srv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// Start server
+	go func() {
+		log.Printf("Starting HTTP server on port %s", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Error starting server: %v", err)
+		}
+	}()
+
+	// Set up graceful shutdown
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+
+	// Block until we receive a signal
+	<-c
+
+	// Create a deadline to wait for
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// Doesn't block if no connections, but will otherwise wait until the timeout
+	srv.Shutdown(ctx)
+	log.Println("HTTP server shutdown gracefully")
+}
+
+func startConsoleInterface() {
 	// Initialize chat history service
 	chatHistory := services.NewChatHistory(10) // Keep last 10 messages
 
@@ -60,8 +123,8 @@ func main() {
 	log.Printf("Created agent with ID: %d and name: %s", agentID, agentName)
 
 	fmt.Println("Start chatting with the agent (type 'exit' to quit, 'clear' to clear history):")
+	fmt.Println("API server is running in the background.")
 
-	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Print("> ")
 		if !scanner.Scan() {
